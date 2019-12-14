@@ -1,0 +1,480 @@
+---
+title: "Air quality of New Delhi"
+date: "12/11/2019"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+
+# 1. Background: 
+
+![](https://images.financialexpress.com/2018/11/cats-153.jpg)
+
+
+
+According to a recent study published in the journal Lancet Planetary health titled “The impact of air pollution on deaths, disease burden, and life expectancy across the states of India: the Global Burden of Disease Study 2017” nearly 12.5 percent of total deaths recorded in India for the year of 2017 could be attributed to the toxic air quality.  That amounts to 1.24 million people that lost their lives in 2017 due to pollution. Furthermore, the worsening pollution in the capital city of India has recently been the source of numerous debates and news articles. The problem is so severe and pervasive that the state government of Delhi was forced to close all schools in the metro region for multiple days.
+
+
+As a former native of the country and having family currently residing in Delhi, I wanted to the data on Delhi air pollution over the past 5 years and see if I could identify any trends/factors that have been contributing to the decline in air quality. The government of Delhi has made several claims and in this project my focus will be to test a few of them: In this project I will be doing the following:
+
+
+1. *Claim*: The pollution might be bad but it has been on a downward trend year over year.
+
+To test this claim I will obtain air quality data and compare the trends year over year 
+
+2. *Claim*: The Delhi government has put forward a hypothesis that increase in the breathable particulate matter is a direct result of “stubble burning” by farmers in the neighboring state of Punjab. 
+
+To test this claim I will review the annual harvest yields for a winter crop such as what and see if the yields seem to have a correlation with the pollution.
+
+3. *Claim*: Pollution has been bad because of prevailing wind conditions.
+
+To test this claim I will source weather data and compare these against the pollution numbers to determine if there is a correlation. Additionally, I will also determine the prevailing wind direction and see if westerly winds have a positive correlation with pollution ( since Punjab is directly west of New Delhi, it would follow that westerly winds would carry more stubble smoke into Delhi). 
+
+----------
+
+# 2. The Workflow
+![](https://miro.medium.com/max/3870/1*eE8DP4biqtaIK3aIy1S2zA.png)
+In order to be as effective and efficient as possible I followed the OSEMN data science workflow. The following sections are arranged to coincide with this workflow
+
+
+  <P style="page-break-before: always">
+  \newpage
+
+# 3a. Gather the Data 
+![](https://tdwi.org/articles/2019/08/13/-/media/TDWI/TDWI/BITW/blockchain1.jpg)
+
+
+## Pollution Data
+Sourcing the data for pollution in Delhi was fairly straight forward. The US Embassy in New Delhi records daily level of various common pollutants and makes them publicly available [here](https://www.airnow.gov/index.cfm?action=airnow.global_summary#India$New_Delhi). For the purposes of this project we focused on two indicators of pollution namely:
+ - The Air Quality Index (AQI) reason being that the AQI is an aggregated index calculated based on the air concentration of various pollutants
+ - pm2.5 which is the concentration of particulate matter 2.5 micrometers or less (in diameter) in the air. According to the EPA "When inhaled, particle pollution can travel deep into the lungs and cause or aggravate heart and lung diseases. Some "primary sources" of this pollutant are
+  – Incomplete combustion
+  – Automobile emissions – Dust
+  – Cooking
+Hence pm2.5 is widely considered as a effective measure of overall pollution. 
+
+Time period: 2015-2019(YTD)
+
+
+Frequency - Hourly
+
+## Weather Data
+Obtaining the weather data proved to be a bit more challenging that I had anticipated. The era of the free api is over. In the end there was no convenient way to obtain bulk historical weather data and I ended up using the [World Weather Online api](https://www.worldweatheronline.com/developer/api/) which provided 2 months of free usage. However, that the api is limited to providing a single month of historical data at a time. As such, I had to reduce my temporal scope where weather data was required.
+
+Time period: July 2018 - March 2019
+
+
+Frequency - every 3 hours
+
+## Harvest Yields Data
+This was sourced from a open data website hosted by the Indian government [here](https://data.gov.in/resources/district-wise-area-under-wheat-cultivation-punjab-1968-2018-april-march)
+
+Time period:2015-2018
+
+
+Frequency - Annual
+
+
+
+Note: All static datasets used in this study are available on [github](https://github.com/DevMeh/FinalProject)
+
+# 3b. Extract  and clean the data
+![](https://miro.medium.com/max/1000/1*yWFQiGjlgHUVYeh4ELELyw.jpeg)
+
+## Extraction 
+
+### Pollution
+The pollution data was downloaded from the link provided above in a csv format. The column names and formatting was not very conducive for efficient coding, as such I was able to find a great function which helps standardize data upon import. This function can be found [here](https://www.r-bloggers.com/clean-consistent-column-names/). The credit for this function belongs to William Doane.
+
+
+```{r}
+# Clean column names function 
+clean_names <- function(.data, unique = FALSE) {
+  n <- if (is.data.frame(.data)) colnames(.data) else .data
+  
+  n <- gsub("%+", "_pct_", n)
+  n <- gsub("\\$+", "_dollars_", n)
+  n <- gsub("\\++", "_plus_", n)
+  n <- gsub("-+", "_minus_", n)
+  n <- gsub("\\*+", "_star_", n)
+  n <- gsub("#+", "_cnt_", n)
+  n <- gsub("&+", "_and_", n)
+  n <- gsub("@+", "_at_", n)
+  
+  n <- gsub("[^a-zA-Z0-9_]+", "_", n)
+  n <- gsub("([A-Z][a-z])", "_\\1", n)
+  n <- tolower(trimws(n))
+  
+  n <- gsub("(^_+|_+$)", "", n)
+  
+  n <- gsub("_+", "_", n)
+  
+  if (unique) n <- make.unique(n, sep = "_")
+  
+  if (is.data.frame(.data)) {
+    colnames(.data) <- n
+    .data
+  } else {
+    n
+  }
+}
+
+library(tidyverse)
+
+#Importing the data and applying the cleaning function
+
+del19 <- read_csv('https://raw.githubusercontent.com/DevMeh/FinalProject/master/NewDelhi_PM2.5_2019_YTD.csv')%>%
+  clean_names()
+del18 <- read_csv('https://raw.githubusercontent.com/DevMeh/FinalProject/master/NewDelhi_PM2.5_2018_YTD.csv')%>%
+  clean_names()
+del17 <- read_csv('https://raw.githubusercontent.com/DevMeh/FinalProject/master/NewDelhi_PM2.5_2017_YTD.csv')%>%
+  clean_names()
+del16 <- read_csv('https://raw.githubusercontent.com/DevMeh/FinalProject/master/NewDelhi_PM2.5_2016_YTD.csv')%>%
+  clean_names()
+del15 <- read_csv('https://raw.githubusercontent.com/DevMeh/FinalProject/master/NewDelhi_PM2.5_2015_YTD.csv')%>%
+  clean_names()
+
+#Binding the datasets together to create a single dataset
+del <- rbind(del15,del16,del17,del18,del19)
+
+# Reviewing my data 
+head(del)
+
+```
+
+
+### Weather data
+Obtained from the api listed above one month at a time. 
+
+```{r}
+library(jsonlite)
+
+jul<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2018-07-01&enddate=2018-07-31')
+aug<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2018-08-01&enddate=2018-08-31')
+sep<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2018-09-01&enddate=2018-09-30')
+oct<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2018-10-01&enddate=2018-10-31')
+nov<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2018-11-01&enddate=2018-11-30')
+dec<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2018-12-01&enddate=2018-12-31')
+jan <- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2019-01-01&enddate=2019-01-31')
+feb<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2019-02-01&enddate=2019-02-27')
+mar<- fromJSON('http://api.worldweatheronline.com/premium/v1/past-weather.ashx?key=79fdc1f7e84f4515b69112551191112&q=new%20delhi,%20india&format=json&date=2019-03-01&enddate=2019-03-31')
+
+
+
+# bind the datasets together
+
+wdf <- rbind(jul$data$weather,aug$data$weather,sep$data$weatheroct$data$weather,nov$data$weather,dec$data$weather, jan$data$weather,feb$data$weather,mar$data$weather)
+
+#review my data
+head(wdf)
+```
+
+
+### Wheat yield
+Downloaded in csv format and then read in
+
+```{r}
+pun <- read_csv('https://raw.githubusercontent.com/DevMeh/FinalProject/master/wheat.csv')
+head(pun)
+```
+
+## Cleaning the data
+
+Upon review of the pollution data extracted above, we discover a column called 'qc_name' which denotes if the values contained within the row have gone through a quality check. We also noted a significant amount of rows where either aqi or the pm concentration (raw_cont) were negative. 
+```{r}
+# Count of negative values in relevant columns and rows noted having an invalid qc check
+del %>% filter(aqi<0) %>% count()
+del %>% filter(raw_conc<0) %>% count()
+del %>% filter(qc_name=='Invalid') %>% count()
+
+```
+
+Note that even though upwards of 2000 rows have negative values only 780 rows are marked as an invalid qc check. As such to clean our data, we will remove all negative values from the data.
+
+```{r}
+# Remove negative values
+temp_pol <- filter(del,aqi>0 & raw_conc>0)
+
+#Remove any values for aqi and pm2.5 over 999 since the level of 500 is considered very hazardous
+temp_pol <- filter(temp_pol,aqi<999 & raw_conc<999)
+
+
+# sanity check
+temp_pol%>% filter(aqi<0) %>% count()
+temp_pol%>% filter(aqi>999) %>% count()
+```
+
+Even after trying multiple times I was unable to convert the 'date' field into a date time object. However, the dataset also has three columns containing the day month and year.  We will use this to create a date column called 'dt'. Once this is accomplished we will reduce our dataset down to only the relevant columns.
+
+
+```{r}
+library(lubridate)
+
+temp1<- temp_pol %>%
+mutate(date1 = paste(year, month, day, hour),
+         dt = ymd_h(date1))
+
+summary(temp1)
+
+vars <- c("dt","aqi",'year','month',"day", "raw_conc")
+
+data <- temp1[vars]
+
+summary(data)
+
+# Convert month and day to numeric for graphing and grouping
+data <- mutate(data,monthn=as.numeric(month))
+data <-  mutate(data,dayn=as.numeric(day))
+```
+
+The pollution data is still in an hourly format. We will resample into daily averages:
+```{r}
+library(tidyquant)
+dfday <- data %>%
+  tq_transmute(
+    mutate_fun = apply.daily, 
+    FUN        = mean,
+    na.rm      = TRUE
+  )
+```
+
+Now our pollution data is ready. 
+
+
+
+The hourly weather data currently is stored as a list within the wdf dataframe. To make it useful, we will first have to unlist it. 
+```{r}
+weather <- as_tibble(wdf) %>% unnest()
+head(weather)
+```
+
+For the purposes of this analysis we will focus on a single column which is the wind speed in miles per hour.Additionally , we will convert the dates from character to a date object and wind from character to numeric.
+
+
+```{r}
+
+
+temp <- weather %>%
+  mutate(
+         dt = ymd(date))
+
+vars <- c('dt','windspeedMiles')
+wind_data <- temp[vars] 
+wind_data$wind <- as.numeric(wind_data$windspeedMiles)
+
+wind <- select(wind_data,c(dt,wind))
+head(wind)
+```
+In this current format the data is hourly. We are going to resample this data and aggregate the weather data by calculating the daily mean. 
+```{r}
+
+library(tidyquant)
+weatherday <- wind%>%
+  tq_transmute(
+    mutate_fun = apply.daily, 
+    FUN        = mean,
+    na.rm      = TRUE
+  )
+
+head(weatherday)
+
+```
+
+Our Weather data is now ready to work with !!
+
+----------
+
+
+
+# 4. Exploration 
+
+![](https://thoughtcatalog.files.wordpress.com/2014/12/shutterstock_124822267.jpg?resize=1000,666&quality=95&strip=all&crop=1)
+
+
+### Pollution
+Visualizing the pollution trends for pm2.5. We will resample again to a weekly frequency in order to reduce noise and volatility within the data
+
+```{r}
+
+library(tidyquant)
+dfweek <- data %>%
+  tq_transmute(
+              mutate_fun = apply.weekly, 
+              FUN        = mean,
+              na.rm      = TRUE
+             )
+
+
+#pm2.5 weekly
+ggplot(dfweek, aes(x=dt,y=raw_conc))+geom_line(aes(color=year))
+
+```
+
+
+
+
+```{r}
+#pm2.5 weekly
+ggplot(dfweek, aes(x=monthn,y=raw_conc,group=year))+geom_line(aes(color=year))
+```
+
+```{r}
+# AQI
+ggplot(dfweek, aes(x=monthn,y=aqi,group=year))+geom_line(aes(color=year))
+```
+
+
+
+
+We note that even Weekly data is too volatile due to data quality issues so we will review this data on a monthly cadence.
+
+
+
+
+
+
+```{r}
+dfmonth <- data %>%
+  tq_transmute(
+              mutate_fun = apply.monthly, 
+              FUN        = mean,
+              na.rm      = TRUE
+             )
+
+
+
+ggplot(dfmonth, aes(x=monthn,y=raw_conc,group=year))+geom_line(aes(color=factor(year)))
+
+```
+
+
+```{r}
+# AQI
+ggplot(dfmonth, aes(x=monthn,y=aqi,group=year))+geom_line(aes(color=factor(year)))
+```
+
+
+### Comparing pollution data with the wind data
+
+In order to compare the windspeed with pollution levels we are going to join the daily pollution dataset with the daily wind dataset.
+
+```{r}
+# convert the date time object to date time
+dfday$dt <- as_date(dfday$dt)
+
+# Join
+final_day <- left_join(weatherday, dfday, by='dt')
+
+```
+
+Let's see if we can discern if there is a correlation between pollution and wind:
+```{r}
+
+# Scatter between pm2.5 and wind
+ggplot(final_day, aes(x=raw_conc,y=wind,group=year))+geom_point(aes(color=factor(year)))
+
+```
+
+
+
+
+
+
+```{r}
+
+# Scatter between aqi and wind
+ggplot(final_day, aes(x=aqi,y=wind,group=year))+geom_point(aes(color=factor(year)))
+
+```
+
+There seems to be a small negative correlation between aqi and wind. We can confirm with a correlation matrix:
+
+```{r}
+#create a temp dataset for the correlation matrix
+stats <- select(final_day,c(aqi,wind,raw_conc) )
+
+#remove any NAs
+
+stats <- drop_na(stats)
+
+library(corrplot)
+corrplot(cor(stats), method = "color",addCoef.col = "black",tl.col = "black" )
+```
+
+
+As expected there is a correlation between air quality, pm2.5 and wind with a slightly higher correlation with aqi.
+
+### Wheat Yield
+```{r}
+# Creating a long form dataset
+wheat <- pivot_longer(pun,cols = starts_with("20"),names_to = 'year',values_to ='prod' )
+
+#filtering out Punjab
+wtemp <- filter(wheat,wheat[1]=='Punjab')
+
+#PLotting
+ggplot(wtemp, aes(x=year,y=prod, group=1)) + geom_line() 
+```
+
+We see that the wheat production has consistently gone up since 2015
+
+--------
+
+
+# 5. Model building 
+![](https://content.revell.de/content/en/model-building-beginners-tips/images/slide-2.jpg)
+
+Due to the small size of the dataset (176 observations) we will build a default model to see if we can predict aqi based on wind speed
+
+```{r}
+
+#Let’s make default model.
+model = lm(aqi~wind, data=stats)
+summary(model)
+par(mfrow=c(2,2))
+plot(model)
+
+
+```
+
+Is there a relationship between predictor and response variable?
+F=31.01 is far greater than 1. It can be concluded that there is a relationship between predictor and response variable. However with a R2 score of .152 this would not be considered a very good model. 
+
+
+
+# Conclusion: What does all mean?
+![](https://smithcp.com/wp-content/uploads/2019/10/Screen-Shot-2019-10-15-at-7.51.41-AM.png)
+
+My conclusions from the analysis above are that I find all of the claims made by the Delhi Government suspect because :
+
+1. it does not seem that pollution has really decreased by much between 2015-2019( avg. aqi of 162.44 and 160.07 or -1.46%)
+
+
+2. any decrease in the pollution can potentially be attributed to a general increase in average wind speed
+
+
+3. even though the yields of agriculture have gone up the pollution has decreased marginally (yields of wheat increased by 18 % between 2015 and 2018)
+
+
+Next steps would be to try and source more accurate data , to do more indepth modeling and use predictors other than wind. 
+
+
+
+
